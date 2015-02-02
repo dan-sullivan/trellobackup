@@ -55,3 +55,4 @@ target/
 
 # Sensitive config data
 config.py
+backups/

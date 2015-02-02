@@ -3,6 +3,7 @@ import logging
 import json
 import urllib2
 import os
+import datetime
 
 
 # Configuration
@@ -32,35 +33,54 @@ def main():
     logging.debug("Initialised logging - filname: %s - level: %s" % (LOG_FILE,LOG_LEVEL))
 
     #TODO: Test connectivity first
-
+    #Get current datetime and format
+    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M")
     # Get all organisations
     orgs = dict_of_orgs()
-    logging.debug("Compiled list of orgs %s" % orgs)
+    logging.debug("Compiled list of orgs - %s" % orgs)
     # Get all standard boards
     boards = list_of_boards()
+    logging.debug("Compiled list of standard Non-Org boards - %s" % boards)
     # Loop over all organisations appending boards to master dictionary
     for org in orgs.keys():
         #Append all org based boards to master board dictionary
         boards = boards + list_of_boards(org)
-
-    logging.debug("Compiled list of boards %s" % boards)
+    logging.debug("Appended org boards to list of boards - %s" % boards)
 
     # Add a blank org for "None" lookups
     orgs[None] = "No Org"
-    logging.debug("Appended None lookup to orgs %s" % orgs)
+    logging.debug("Appended None lookup to orgs - %s" % orgs)
 
     # Loop over all boards
     for board in boards:
-        # Create directory structure
-        path = "/".join([SAVE_LOCATION,sanitise_filename(orgs[board["org_id"]]),sanitise_filename(board["name"])])
-        if not os.path.exists(path):
-            os.makedirs(path)
-
         logging.debug("Working on board data - %s" % board)
+
+        # Create directory structure
+        path = "/".join([SAVE_LOCATION,timestamp,sanitise_filename(orgs[board["org_id"]]),sanitise_filename(board["name"])])
+        logging.debug("Attempting to create path - %s" % path)
+        if not os.path.exists(path):
+            try:
+                os.makedirs(path)
+                logging.debug("Created path - %s" % path)
+            except:
+                #TODO: Capture detailed exceptions and log them
+                logging.debug("Error creating path - %s" % path)
+        else:
+            # Path is reporting as already existing
+            logging.debug("Path already exists - %s" % path)
+
+
         # Create and sanitise filename
-        filename = sanitise_filename("%s - %s - %s.json" % (str(orgs[board["org_id"]]), board["id"] , board["name"]))
-        # Download board json
+        filename = "%s - %s - %s.json" % (str(orgs[board["org_id"]]), board["id"] , board["name"])
+        logging.debug("Filename before sanitising - %s" % filename)
+        filename = sanitise_filename(filename)
+        logging.debug("Filename after sanitising - %s" % filename)
+
+        # Download board json to file and also store in board_data for parsing
+        logging.debug("Attempting to download board data - %s" % board)
         board_data = save_return_board_data(board["id"], "/".join([path,filename]))
+        logging.debug("Downloaded board to - %s" % "/".join([path,filename]))
+
         #Download attachments - naming convention attachmentID - originalfilename
         dict_attachments = dict_of_attachments(board_data)
         for attachment in dict_attachments:
@@ -85,7 +105,9 @@ def get_url(url):
 def dict_of_orgs():
     """returns a dictionary of all your trello organisations"""
     orgs_dict = {}
+    logging.debug("Attempting to compile list of organisations")
     org_data = json.loads(get_url("https://api.trello.com/1/members/me/organizations?key=%s&token=%s" % (TRELLO_API_KEY,TRELLO_API_APP_TOKEN)))
+    logging.debug("org data - %s" % org_data)
     for org in org_data:
         orgs_dict[org["id"]] = org["displayName"]
     return orgs_dict
@@ -95,10 +117,14 @@ def list_of_boards(org_id=None):
     If no org_id provided returns standard orgs"""
     boards_list = []
     if org_id:
+        logging.debug("Attempting to get boards (orgs)")
         board_data = json.loads(get_url("https://api.trello.com/1/organizations/%s/boards?key=%s&token=%s" % (org_id,TRELLO_API_KEY,TRELLO_API_APP_TOKEN)))
     else:
+        logging.debug("Attempting to get boards (non-orgs)")
         board_data = json.loads(get_url("https://api.trello.com/1/members/me/boards?key=%s&token=%s" % (TRELLO_API_KEY,TRELLO_API_APP_TOKEN)))
+    logging.debug("Board data - %s" % board_data)
     for board in board_data:
+        #TODO: If inc_closed == false then check if board is closed and ignore if so.
         boards_list.append({"id":board["id"],"name":board["name"],"org_id":board["idOrganization"]})
     return boards_list
 
@@ -122,6 +148,7 @@ def dict_of_attachments(board_data):
     board_json = json.loads(board_data)
     for card in board_json["cards"]:
         logging.debug("card data: " + str(card))
+        # Check if card has any attachments. If so, add to dictionary
         if card["badges"]["attachments"] > 0:
             attachments = json.loads(get_url("https://api.trello.com/1/cards/%s/attachments?key=%s&token=%s" % (card["id"],TRELLO_API_KEY,TRELLO_API_APP_TOKEN)))
             for attachment in attachments:
