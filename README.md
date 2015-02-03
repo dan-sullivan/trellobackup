@@ -8,3 +8,8 @@ Requires API and application token from Trello
 TODO: 
 - Better logging
 - Better error handling
+
+
+Credits
+---
+Inspiration taken from Matthieu Aubry's PHP-based [trello-backup](https://github.com/mattab/trello-backup) 
