@@ -16,7 +16,8 @@ except:
     TRELLO_API_APP_TOKEN=""
     LOG_FILE="trellobackup.log"
     LOG_LEVEL="debug"
-    SAVE_LOCATION="."
+    SAVE_LOCATION="./backups"
+    INCLUDE_CLOSED_BOARDS=False
 
 # For use with logging
 LEVELS={"debug":logging.DEBUG,
@@ -39,12 +40,12 @@ def main():
     orgs = dict_of_orgs()
     logging.debug("Compiled list of orgs - %s" % orgs)
     # Get all standard boards
-    boards = list_of_boards()
+    boards = list_of_boards(None,INCLUDE_CLOSED_BOARDS)
     logging.debug("Compiled list of standard Non-Org boards - %s" % boards)
     # Loop over all organisations appending boards to master dictionary
     for org in orgs.keys():
         #Append all org based boards to master board dictionary
-        boards = boards + list_of_boards(org)
+        boards = boards + list_of_boards(org,INCLUDE_CLOSED_BOARDS)
     logging.debug("Appended org boards to list of boards - %s" % boards)
 
     # Add a blank org for "None" lookups
@@ -99,7 +100,11 @@ def sanitise_filename(filename):
 
 def get_url(url):
     """fetch a URL, return as a string"""
-    response = urllib2.urlopen(url)
+    try:
+        response = urllib2.urlopen(url)
+    except urllib2.URLError: 
+        logging.critical("Problem getting URL - %s" % url)
+        badexit()
     return response.read()
 
 def dict_of_orgs():
@@ -112,7 +117,7 @@ def dict_of_orgs():
         orgs_dict[org["id"]] = org["displayName"]
     return orgs_dict
 
-def list_of_boards(org_id=None):
+def list_of_boards(org_id=None,inc_closed=False):
     """returns a dictionary of boards and their IDs.
     If no org_id provided returns standard orgs"""
     boards_list = []
@@ -124,8 +129,12 @@ def list_of_boards(org_id=None):
         board_data = json.loads(get_url("https://api.trello.com/1/members/me/boards?key=%s&token=%s" % (TRELLO_API_KEY,TRELLO_API_APP_TOKEN)))
     logging.debug("Board data - %s" % board_data)
     for board in board_data:
-        #TODO: If inc_closed == false then check if board is closed and ignore if so.
-        boards_list.append({"id":board["id"],"name":board["name"],"org_id":board["idOrganization"]})
+        # If board is closed and config says not to include closed then skip
+        if board["closed"] and not inc_closed:
+            logging.debug("Closed Board, Skipping as per config - %s - %s" % (board["id"],board["name"]))
+            pass
+        else:
+            boards_list.append({"id":board["id"],"name":board["name"],"org_id":board["idOrganization"]})
     return boards_list
 
 def save_return_board_data(board_id,savefile=""):
@@ -154,6 +163,10 @@ def dict_of_attachments(board_data):
             for attachment in attachments:
                 attach_dict[attachment["id"]] = {"card_id": card["id"],"name": attachment["name"],"url": attachment["url"]}
     return attach_dict
+
+def badexit():
+    print "Critical problem encountered. Exiting. Check log for details"
+    sys.exit()
 
 if __name__ == "__main__":
     sys.exit(main())
