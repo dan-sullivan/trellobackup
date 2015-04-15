@@ -56,3 +56,7 @@ target/
 # Sensitive config data
 config.py
 backups/
+
+
+# vim swap files
+*.swp
